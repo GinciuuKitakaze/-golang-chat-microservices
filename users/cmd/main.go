@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 
 	accountpb "github.com/GinciuuKitakaze/messenger-contracts/users/go"
 	"github.com/GinciuuKitakaze/users/internal/adapter/repository/postgres/pool/pgx"
@@ -56,8 +59,19 @@ func main() {
 	}
 
 	logger.Info(fmt.Sprintf("gRPC server listening %s", listenAddr))
-	if err = s.Serve(lis); err != nil {
-		logger.Fatal("Failed to serve", zap.Error(err))
-		return
-	}
+	go func() {
+		if err = s.Serve(lis); err != nil {
+			logger.Fatal("Failed to serve", zap.Error(err))
+			return
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("Shutting down gRPC server...")
+	s.GracefulStop()
+	pool.Close()
+	logger.Close()
 }
