@@ -49,6 +49,10 @@ func (r *Repository) CreateUser(ctx context.Context, user core_model.CreateUser)
 		&userModel.Updated,
 	)
 	if err != nil {
+		if errors.Is(err, postgres_pool.ErrAlreadyExists) {
+			return core_model.User{}, core_errors.ErrAlreadyExists
+		}
+
 		return core_model.User{}, fmt.Errorf("create user: %w", err)
 	}
 
@@ -221,7 +225,10 @@ func (r *Repository) UpdateUser(ctx context.Context, userID uuid.UUID, user core
 		if errors.Is(err, postgres_pool.ErrNoRows) {
 			return core_model.User{}, core_errors.ErrOptimisticLock
 		}
-		return core_model.User{}, fmt.Errorf("scan user: %w", err)
+		if errors.Is(err, postgres_pool.ErrAlreadyExists) {
+			return core_model.User{}, core_errors.ErrAlreadyExists
+		}
+		return core_model.User{}, fmt.Errorf("update user: %w", err)
 	}
 
 	return repository_mapper.ToDomain(userModel), nil

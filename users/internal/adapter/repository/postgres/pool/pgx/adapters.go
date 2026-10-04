@@ -46,6 +46,9 @@ func mapErrors(err error) error {
 		// Код PostgreSQL для ошибки нарушения внешнего ключа.
 		// Полный список кодов: https://www.postgresql.org/docs/current/errcodes-appendix.html
 		pgxViolatesForeignKeyErrorCode = "23503"
+
+		// Код PostgreSQL для нарушения ограничения уникальности.
+		pgxUniqueViolationErrorCode = "23505"
 	)
 
 	// pgx.ErrNoRows → наш ErrNoRows (запись не найдена)
@@ -61,6 +64,13 @@ func mapErrors(err error) error {
 				"%v: %w",
 				err,
 				postgres_pool.ErrViolatesForeignKey,
+			)
+		}
+		if pgErr.Code == pgxUniqueViolationErrorCode {
+			return fmt.Errorf(
+				"%v: %w",
+				err,
+				postgres_pool.ErrAlreadyExists,
 			)
 		}
 	}

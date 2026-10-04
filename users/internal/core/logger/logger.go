@@ -56,3 +56,7 @@ func NewLogger(config core_config.LoggerConfig) (*Logger, error) {
 	}, nil
 
 }
+
+func (l *Logger) Close() error {
+	return l.file.Close()
+}
