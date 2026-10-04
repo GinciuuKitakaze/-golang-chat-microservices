@@ -11,4 +11,7 @@ var (
 
 	// ErrValidation ошибка валидации входных данных
 	ErrValidation = errors.New("validation error")
+
+	// ErrAlreadyExists ошибка, когда значение уже используется
+	ErrAlreadyExists = errors.New("already exists")
 )
