@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"uuid"
 
+	core_errors "github.com/GinciuuKitakaze/users/internal/core/errors"
 	core_logger "github.com/GinciuuKitakaze/users/internal/core/logger"
 	core_model "github.com/GinciuuKitakaze/users/internal/core/model"
 )
@@ -31,6 +32,8 @@ type Repository interface {
 }
 
 func (s *UserService) CreateUser(ctx context.Context, user core_model.CreateUser) (core_model.User, error) {
+	user.Normalize()
+
 	if err := user.Validate(); err != nil {
 		return core_model.User{}, err
 	}
@@ -48,8 +51,30 @@ func (s *UserService) GetUser(ctx context.Context, userID uuid.UUID) (core_model
 }
 
 func (s *UserService) GetUsers(ctx context.Context, limit, offset int) ([]core_model.User, error) {
+	const (
+		minLimit = 1
+		maxLimit = 100
+	)
+
+	if limit < minLimit || limit > maxLimit {
+		return make([]core_model.User, 0), fmt.Errorf(
+			"invalid limit %d: %w",
+			limit,
+			core_errors.ErrValidation,
+		)
+	}
+
+	if offset < 0 {
+		return make([]core_model.User, 0), fmt.Errorf(
+			"invalid offset %d: %w",
+			offset,
+			core_errors.ErrValidation,
+		)
+	}
+
 	return s.repo.GetUsers(ctx, limit, offset)
 }
+
 func (s *UserService) GetUserByEmailOrPhone(ctx context.Context, emailOrPhone string) (core_model.User, error) {
 	return s.repo.GetUserByEmailOrPhone(ctx, emailOrPhone)
 }
@@ -68,6 +93,8 @@ func (s *UserService) DeleteUser(ctx context.Context, userID uuid.UUID) (core_mo
 }
 
 func (s *UserService) UpdateUser(ctx context.Context, userID uuid.UUID, userUpdate core_model.UpdateUser) (core_model.User, error) {
+	userUpdate.Normalize()
+
 	if err := userUpdate.Validate(); err != nil {
 		return core_model.User{}, err
 	}

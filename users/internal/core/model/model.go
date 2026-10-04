@@ -100,6 +100,25 @@ func (u CreateUser) Validate() error {
 	return nil
 }
 
+func (u *CreateUser) Normalize() {
+	u.Name = strings.TrimSpace(u.Name)
+
+	if u.Email != nil {
+		email := strings.TrimSpace(strings.ToLower(*u.Email))
+		u.Email = &email
+	}
+
+	if u.Phone != nil {
+		phone := strings.TrimSpace(*u.Phone)
+
+		if number, err := phonenumbers.Parse(phone, "RU"); err == nil {
+			phone = phonenumbers.Format(number, phonenumbers.E164)
+		}
+
+		u.Phone = &phone
+	}
+}
+
 type UpdateUser struct {
 	Name  string
 	Email *string
@@ -147,4 +166,23 @@ func (u UpdateUser) Validate() error {
 	}
 
 	return nil
+}
+
+func (u *UpdateUser) Normalize() {
+	u.Name = strings.TrimSpace(u.Name)
+
+	if u.Email != nil {
+		email := strings.TrimSpace(strings.ToLower(*u.Email))
+		u.Email = &email
+	}
+
+	if u.Phone != nil {
+		phone := strings.TrimSpace(*u.Phone)
+
+		if number, err := phonenumbers.Parse(phone, "RU"); err == nil {
+			phone = phonenumbers.Format(number, phonenumbers.E164)
+		}
+
+		u.Phone = &phone
+	}
 }
