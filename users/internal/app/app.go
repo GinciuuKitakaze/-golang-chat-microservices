@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -16,6 +17,8 @@ import (
 	postgres_repository "github.com/GinciuuKitakaze/users/internal/repository/postgres"
 	"github.com/GinciuuKitakaze/users/internal/service"
 	grpctransport "github.com/GinciuuKitakaze/users/internal/transport/gRPC"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -57,7 +60,6 @@ func NewApp(ctx context.Context) (*App, error) {
 
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
-
 	logger.Debug(
 		"initializing service",
 		zap.String("service", "user"),
@@ -85,12 +87,26 @@ func NewApp(ctx context.Context) (*App, error) {
 	// Регистрируем UserService в gRPC сервере.
 	accountpb.RegisterUserServiceServer(grpcServer, userServer)
 
-	return &App{
+	app := &App{
 		cfg:        cfg,
 		logger:     logger,
 		grpcServer: grpcServer,
 		pool:       pool,
-	}, nil
+	}
+
+	// Запускаем миграции.
+	if err := app.runMigrations(ctx); err != nil {
+		logger.Error(
+			"Failed to run migrations",
+			zap.Error(err),
+		)
+		pool.Close()
+		logger.Close()
+
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+
+	return app, nil
 }
 
 // Run запускает приложение и ожидает сигнал завершения.
@@ -119,10 +135,12 @@ func (a *App) Run() error {
 	// Запускаем gRPC сервер.
 	go func() {
 		if err := a.grpcServer.Serve(a.listener); err != nil {
-			a.logger.Error(
-				"gRPC server stopped",
-				zap.Error(err),
-			)
+			if !errors.Is(err, grpc.ErrServerStopped) {
+				a.logger.Error(
+					"gRPC server stopped",
+					zap.Error(err),
+				)
+			}
 		}
 	}()
 
@@ -142,6 +160,21 @@ func (a *App) Run() error {
 	return nil
 }
 
+func (a *App) runMigrations(ctx context.Context) error {
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("failed to select migrations dialect: %w", err)
+	}
+
+	dbGoose := stdlib.OpenDBFromPool(a.pool.Pool)
+	defer dbGoose.Close()
+
+	if err := goose.UpContext(ctx, dbGoose, "./migrations"); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	return nil
+}
+
 // Shutdown корректно завершает работу приложения.
 func (a *App) Shutdown() {
 	a.logger.Info("Shutting down gRPC server...")
@@ -150,11 +183,13 @@ func (a *App) Shutdown() {
 	a.grpcServer.GracefulStop()
 
 	// Закрываем listener.
-	if err := a.listener.Close(); err != nil {
-		a.logger.Error(
-			"Failed to close listener",
-			zap.Error(err),
-		)
+	if a.listener != nil {
+		if err := a.listener.Close(); err != nil {
+			a.logger.Error(
+				"Failed to close listener",
+				zap.Error(err),
+			)
+		}
 	}
 
 	// Закрываем PostgreSQL.

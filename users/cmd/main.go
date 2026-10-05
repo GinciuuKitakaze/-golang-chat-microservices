@@ -16,11 +16,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Корректно завершаем работу приложения.
+	defer application.Shutdown()
+
 	// Запускаем приложение.
 	if err := application.Run(); err != nil {
 		log.Fatal(err)
 	}
-
-	// Корректно завершаем работу приложения.
-	application.Shutdown()
 }
