@@ -8,5 +8,6 @@ RUN CGO_ENABLED=0 go build -o /app/exe ./cmd
 FROM alpine:3.23
 WORKDIR /app
 COPY --from=builder /app/exe /app/exe
+COPY --from=builder /app/migrations /app/migrations
 ENV PROJECT_ROOT=/app
 CMD ["/app/exe"]
