@@ -61,7 +61,7 @@ func NewApp(ctx context.Context) (*App, error) {
 
 	logger.Debug(
 		"initializing service",
-		zap.String("service", "user"),
+		zap.String("service", "auth"),
 	)
 
 	// Инициализируем репозиторий.
