@@ -67,7 +67,7 @@ func (p *Pool) QueryRow(ctx context.Context, sql string, args ...any) postgres_p
 func (p *Pool) Query(ctx context.Context, sql string, args ...any) (postgres_pool.Rows, error) {
 	rows, err := p.Pool.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, err
+		return nil, mapErrors(err)
 	}
 	return pgxRows{rows}, nil
 }
@@ -77,7 +77,7 @@ func (p *Pool) Query(ctx context.Context, sql string, args ...any) (postgres_poo
 func (p *Pool) Exec(ctx context.Context, sql string, arguments ...any) (postgres_pool.CommandTag, error) {
 	tag, err := p.Pool.Exec(ctx, sql, arguments...)
 	if err != nil {
-		return nil, err
+		return nil, mapErrors(err)
 	}
 
 	return pgxCommandTag{tag}, nil
