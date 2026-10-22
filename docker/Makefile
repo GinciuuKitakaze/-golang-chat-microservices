@@ -1,19 +1,33 @@
-define migrate-service
-	@docker compose run --rm migrate \
-		-path /migrations-$1 \
-		-database "postgres://postgres:postgres@postgres-$1:5432/$1?sslmode=disable" \
-		$2
-endef
+up:
+	docker compose up -d --build
 
-migrate-user-service-create: ## PostgreSQL: Создать новую версию схемы данных
-	@if [ -z "$(name)" ]; then \
-		echo "Usage: make migrate-user-create name=init"; \
-		exit 1; \
-	fi; \
-	docker compose run --rm migrate create -ext sql -dir /migrations-user -seq "$(name)"
+down:
+	docker compose down
 
-migrate-user-service-up: ## PostgreSQL: Накатить миграции
-	$(call migrate-service,user,up)
+restart:
+	docker compose down
+	docker compose up -d --build
 
-migrate-user-service-down: ## PostgreSQL: Откатить миграции
-	$(call migrate-service,user,down 1)
+user-up:
+	docker compose up -d --build user postgres-user
+
+user-down:
+	docker compose stop user postgres-user
+
+auth-up:
+	docker compose up -d --build auth postgres-auth
+
+auth-down:
+	docker compose stop auth postgres-auth
+
+postgres-up:
+	docker compose up -d postgres-user postgres-auth
+
+postgres-down:
+	docker compose stop postgres-user postgres-auth
+
+redis-up:
+	docker compose up -d redis-auth
+
+redis-down:
+	docker compose stop redis-auth

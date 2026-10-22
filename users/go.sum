@@ -1,5 +1,5 @@
-github.com/GinciuuKitakaze/messenger-contracts v1.0.0 h1:T37C5bYYjU+5T28rFOIgpXxVL1qd0a1dbfRfSauNqAY=
-github.com/GinciuuKitakaze/messenger-contracts v1.0.0/go.mod h1:kYItmaSNAkhSrwLvItgDS1EmyiqXsk7X2YH1p0/W3QA=
+github.com/GinciuuKitakaze/messenger-contracts v1.0.2 h1:b2F0QW6K0G494QY3haK0vtLkJrKmY7De4zkcHFnxDBc=
+github.com/GinciuuKitakaze/messenger-contracts v1.0.2/go.mod h1:kYItmaSNAkhSrwLvItgDS1EmyiqXsk7X2YH1p0/W3QA=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=

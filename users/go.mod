@@ -3,7 +3,7 @@ module github.com/GinciuuKitakaze/users
 go 1.27.1
 
 require (
-	github.com/GinciuuKitakaze/messenger-contracts v1.0.0
+	github.com/GinciuuKitakaze/messenger-contracts v1.0.2
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/joho/godotenv v1.5.1
 	github.com/kelseyhightower/envconfig v1.4.0

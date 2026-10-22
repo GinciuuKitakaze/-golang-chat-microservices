@@ -1,16 +1,84 @@
 services:
+  user:
+    build:
+      context: ../users
+      dockerfile: cmd/Dockerfile
+    container_name: user
+    environment:
+      - GRPC_HOST=0.0.0.0
+      - GRPC_PORT=${USER_GRPC_PORT}
+
+      - POSTGRES_HOST=postgres-user
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=user
+      - POSTGRES_TIMEOUT=${POSTGRES_TIMEOUT}
+
+      - LOGGER_LEVEL=${LOGGER_LEVEL}
+      - LOGGER_FOLDER=/app/out/logs
+    volumes:
+      - ../out/logs/user:/app/out/logs
+    ports:
+      - "${USER_GRPC_PORT}:${USER_GRPC_PORT}"
+    depends_on:
+      postgres-user:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
+
+  auth:
+    build:
+      context: ../auth
+      dockerfile: cmd/Dockerfile
+    container_name: auth
+    environment:
+      - GRPC_HOST=0.0.0.0
+      - GRPC_PORT=${AUTH_GRPC_PORT}
+
+      - POSTGRES_HOST=postgres-auth
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=auth
+      - POSTGRES_TIMEOUT=${POSTGRES_TIMEOUT}
+
+      - REDIS_HOST=redis-auth
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+      - LOGGER_LEVEL=${LOGGER_LEVEL}
+      - LOGGER_FOLDER=/app/out/logs
+
+      - JWT_SECRET=${JWT_SECRET}
+      - ACCESS_TOKEN_TTL_MINUTES=${ACCESS_TOKEN_TTL_MINUTES}
+      - REFRESH_TOKEN_TTL_DAYS=${REFRESH_TOKEN_TTL_DAYS}
+    volumes:
+      - ../out/logs/auth:/app/out/logs
+    ports:
+      - "${AUTH_GRPC_PORT}:${AUTH_GRPC_PORT}"
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+      redis-auth:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
+
   postgres-user:
     image: postgres:18.3-bookworm
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: user
     ports:
       - "5432:5432"
     volumes:
       - postgres_user_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,24 +88,41 @@ services:
   postgres-auth:
     image: postgres:18.3-bookworm
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: auth
     ports:
       - "5433:5432"
     volumes:
       - postgres_auth_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - app-network
 
+  redis-auth:
+    image: redis:8.6.1
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_auth_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - app-network
+
 volumes:
   postgres_user_data:
   postgres_auth_data:
+  redis_auth_data:
 
 networks:
   app-network:
