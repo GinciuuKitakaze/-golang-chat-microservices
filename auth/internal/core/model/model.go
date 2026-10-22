@@ -47,3 +47,8 @@ type TokenPair struct {
 	AccessToken  string
 	RefreshToken string
 }
+
+type Logout struct {
+	AccessToken  string
+	RefreshToken string
+}

@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	pgx_pool "github.com/GinciuuKitakaze/auth/internal/adapter/repository/postgres/pool/pgx"
+	goredis_pool "github.com/GinciuuKitakaze/auth/internal/adapter/repository/redis/goredis"
 	core_config "github.com/GinciuuKitakaze/auth/internal/core/config"
 	core_logger "github.com/GinciuuKitakaze/auth/internal/core/logger"
 	"github.com/GinciuuKitakaze/auth/internal/interceptor"
@@ -30,6 +31,7 @@ type App struct {
 	grpcServer *grpc.Server
 	listener   net.Listener
 	pool       *pgx_pool.Pool
+	redisPool  *goredis_pool.Pool
 }
 
 // NewApp создаёт и инициализирует приложение.
@@ -47,7 +49,7 @@ func NewApp(ctx context.Context) (*App, error) {
 		return nil, fmt.Errorf("create logger: %w", err)
 	}
 
-	// Инициализируем пул соеднинений с PostgreSQL.
+	// Инициализируем пул соединений с PostgreSQL.
 	pool, err := pgx_pool.NewPool(ctx, cfg.Postgres)
 	if err != nil {
 		logger.Error(
@@ -59,6 +61,24 @@ func NewApp(ctx context.Context) (*App, error) {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
 
+	logger.Debug("postgres connection pool created")
+
+	// Инициализируем пул соединений с Redis.
+	redisPool, err := goredis_pool.NewPool(ctx, cfg.Redis)
+	if err != nil {
+		logger.Error(
+			"Failed to create redis connection pool",
+			zap.Error(err),
+		)
+
+		pool.Close()
+		logger.Close()
+
+		return nil, fmt.Errorf("create redis pool: %w", err)
+	}
+
+	logger.Debug("redis connection pool created")
+
 	logger.Debug(
 		"initializing service",
 		zap.String("service", "auth"),
@@ -68,7 +88,12 @@ func NewApp(ctx context.Context) (*App, error) {
 	authRepository := postgres_repository.NewRepository(pool, logger)
 
 	// Инициализируем сервис.
-	authService := service.NewAuthService(authRepository, logger, cfg.Token)
+	authService := service.NewAuthService(
+		authRepository,
+		redisPool,
+		logger,
+		cfg.Token,
+	)
 
 	// Инициализируем transport.
 	authServer := grpctransport.NewServer(authService, logger)
@@ -91,6 +116,7 @@ func NewApp(ctx context.Context) (*App, error) {
 		logger:     logger,
 		grpcServer: gprcServer,
 		pool:       pool,
+		redisPool:  redisPool,
 	}
 
 	// Запускаем миграции.
@@ -100,6 +126,7 @@ func NewApp(ctx context.Context) (*App, error) {
 			zap.Error(err),
 		)
 
+		redisPool.Close()
 		pool.Close()
 		logger.Close()
 
@@ -192,6 +219,9 @@ func (a *App) Shutdown() {
 
 	// Закрываем PostgreSQL.
 	a.pool.Close()
+
+	// Закрываем Redis.
+	a.redisPool.Close()
 
 	// Закрываем логгер.
 	a.logger.Close()

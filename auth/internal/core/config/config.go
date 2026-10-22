@@ -13,6 +13,7 @@ type Config struct {
 	Postgres PostgresConfig
 	Logger   LoggerConfig
 	Token    TokenConfig
+	Redis    RedisConfig
 }
 
 type GRPCConfig struct {
@@ -38,6 +39,14 @@ type TokenConfig struct {
 	JwtSecret             string `envconfig:"JWT_SECRET" required:"true"`
 	AccessTokenTTLMinutes int    `envconfig:"ACCESS_TOKEN_TTL_MINUTES" default:"60"`
 	RefreshTokenTTLDays   int    `envconfig:"REFRESH_TOKEN_TTL_DAYS" default:"30"`
+}
+
+type RedisConfig struct {
+	Host     string        `envconfig:"REDIS_HOST" default:"localhost"`
+	Port     string        `envconfig:"REDIS_PORT" default:"6379"`
+	Password string        `envconfig:"REDIS_PASSWORD" default:"redis"`
+	DB       int           `envconfig:"REDIS_DB" default:"0"`
+	TTL      time.Duration `envconfig:"REDIS_TTL" default:"5m"`
 }
 
 func Load() (*Config, error) {

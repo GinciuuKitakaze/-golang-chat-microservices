@@ -36,8 +36,8 @@ type AuthService interface {
 	Register(ctx context.Context, req core_model.Register) error
 	Login(ctx context.Context, req core_model.Login) (core_model.TokenPair, error)
 	Refresh(ctx context.Context, refreshToken string) (core_model.TokenPair, error)
-	Validate(accessToken string) (uuid.UUID, error)
-	Logout(ctx context.Context, refreshToken string) error
+	Validate(ctx context.Context, accessToken string) (uuid.UUID, error)
+	Logout(ctx context.Context, req core_model.Logout) error
 	DeleteUserAuthData(ctx context.Context, userID uuid.UUID) error
 }
 
@@ -115,7 +115,10 @@ func (s *Server) Validate(
 ) (*authpb.ValidateResponse, error) {
 
 	// Проверяем access-токен.
-	userID, err := s.authService.Validate(req.AccessToken)
+	userID, err := s.authService.Validate(
+		ctx,
+		req.AccessToken,
+	)
 	if err != nil {
 		return &authpb.ValidateResponse{}, toGRPCError(err)
 	}
@@ -126,17 +129,17 @@ func (s *Server) Validate(
 	), nil
 }
 
-// Logout отзывает refresh-токен пользователя.
+// Logout завершает сессию пользователя,
+// отзывая refresh-токен и добавляя access-токен в blacklist.
 func (s *Server) Logout(
 	ctx context.Context,
-	req *authpb.RefreshRequest,
+	req *authpb.LogoutRequest,
 ) (*emptypb.Empty, error) {
+	// Преобразуем protobuf модель в доменную.
+	logout := transport_mapper.ToDomainLogout(req)
 
-	// Отзываем refresh-токен.
-	if err := s.authService.Logout(
-		ctx,
-		req.RefreshToken,
-	); err != nil {
+	// Завершаем пользовательскую сессию.
+	if err := s.authService.Logout(ctx, logout); err != nil {
 		return &emptypb.Empty{}, toGRPCError(err)
 	}
 

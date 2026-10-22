@@ -8,9 +8,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 	"uuid"
 
+	redis_pool "github.com/GinciuuKitakaze/auth/internal/adapter/repository/redis"
 	core_config "github.com/GinciuuKitakaze/auth/internal/core/config"
 	core_errors "github.com/GinciuuKitakaze/auth/internal/core/errors"
 	core_logger "github.com/GinciuuKitakaze/auth/internal/core/logger"
@@ -21,13 +23,15 @@ import (
 
 type AuthService struct {
 	repo        Repository
+	redis       redis_pool.Pool
 	logger      *core_logger.Logger
 	tokenConfig core_config.TokenConfig
 }
 
-func NewAuthService(repo Repository, logger *core_logger.Logger, tokenConfig core_config.TokenConfig) *AuthService {
+func NewAuthService(repo Repository, redis redis_pool.Pool, logger *core_logger.Logger, tokenConfig core_config.TokenConfig) *AuthService {
 	return &AuthService{
 		repo:        repo,
+		redis:       redis,
 		logger:      logger,
 		tokenConfig: tokenConfig,
 	}
@@ -91,14 +95,70 @@ func (s *AuthService) Login(ctx context.Context,
 			err,
 		)
 	}
+
+	key := "login:attempts:" + req.UserID.String()
+
+	data, err := s.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		if !errors.Is(err, redis_pool.NotFound) {
+			return core_model.TokenPair{}, fmt.Errorf(
+				"get login attempts: %w",
+				err,
+			)
+		}
+	} else {
+		attempts, err := strconv.Atoi(string(data))
+		if err != nil {
+			return core_model.TokenPair{}, fmt.Errorf(
+				"parse login attempts: %w",
+				err,
+			)
+		}
+
+		if attempts >= 5 {
+			return core_model.TokenPair{}, core_errors.ErrUnauthenticated
+		}
+	}
+
 	// Проверяем,что введённый пароль совпадает с хешем в бд
-	if err := bcrypt.CompareHashAndPassword([]byte(credentials.PasswordHash), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword(
+		[]byte(credentials.PasswordHash),
+		[]byte(req.Password),
+	); err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+
+			cmd := s.redis.Incr(ctx, key)
+			if err := cmd.Err(); err != nil {
+				return core_model.TokenPair{}, fmt.Errorf(
+					"increment login attempts: %w",
+					err,
+				)
+			}
+
+			attempts := cmd.Val()
+
+			if attempts == 1 {
+				if err := s.redis.Expire(ctx, key, time.Minute*5).Err(); err != nil {
+					return core_model.TokenPair{}, fmt.Errorf(
+						"set login attempts ttl: %w",
+						err,
+					)
+				}
+			}
+
 			return core_model.TokenPair{}, core_errors.ErrUnauthenticated
 		}
 
 		return core_model.TokenPair{}, fmt.Errorf(
 			"compare password: %w",
+			err,
+		)
+	}
+
+	// Пароль правильный — сбрасываем счётчик неудачных попыток.
+	if err := s.redis.Del(ctx, key).Err(); err != nil {
+		return core_model.TokenPair{}, fmt.Errorf(
+			"delete login attempts: %w",
 			err,
 		)
 	}
@@ -131,6 +191,7 @@ func (s *AuthService) Refresh(
 
 // Validate - проверка access-токена и извлечение userID
 func (s *AuthService) Validate(
+	ctx context.Context,
 	accessToken string,
 ) (uuid.UUID, error) {
 
@@ -150,6 +211,23 @@ func (s *AuthService) Validate(
 		return uuid.Nil(), core_errors.ErrUnauthenticated
 	}
 
+	//Формируем ключ для проверки access-токена в blacklist.
+	hash := sha256.Sum256([]byte(accessToken))
+	key := "blacklist:access:" + hex.EncodeToString(hash[:])
+
+	//Проверяем, находится ли access-токен в blacklist.
+	_, err = s.redis.Get(ctx, key).Bytes()
+	if err == nil {
+		return uuid.Nil(), core_errors.ErrUnauthenticated
+	}
+
+	if !errors.Is(err, redis_pool.NotFound) {
+		return uuid.Nil(), fmt.Errorf(
+			"check access token blacklist: %w",
+			err,
+		)
+	}
+
 	// Извлекаем userID
 	userIDStr, ok := claims["user_id"].(string)
 	if !ok {
@@ -166,21 +244,63 @@ func (s *AuthService) Validate(
 
 func (s *AuthService) Logout(
 	ctx context.Context,
-	refreshToken string,
+	logout core_model.Logout,
 ) error {
 
-	// Хешируем refresh-токен для поиска в БД.
-	hash := sha256.Sum256([]byte(refreshToken))
-	refreshHash := hex.EncodeToString(hash[:])
+	// Парсим access-токен, проверяем подпись и срок действия.
+	claims := jwt.MapClaims{}
+
+	_, err := jwt.ParseWithClaims(
+		logout.AccessToken,
+		claims,
+		func(token *jwt.Token) (interface{}, error) {
+			return []byte(s.tokenConfig.JwtSecret), nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+	)
+	if err != nil {
+		return core_errors.ErrUnauthenticated
+	}
+
+	// Получаем время истечения access-токена.
+	expiration, err := claims.GetExpirationTime()
+	if err != nil || expiration == nil {
+		return core_errors.ErrUnauthenticated
+	}
+
+	// Вычисляем, сколько ещё должен жить access-токен.
+	ttl := time.Until(expiration.Time)
+	if ttl <= 0 {
+		return core_errors.ErrUnauthenticated
+	}
+
+	// Формируем ключ blacklist по хешу access-токена.
+	hashAccessToken := sha256.Sum256([]byte(logout.AccessToken))
+	blacklistKey := "blacklist:access:" + hex.EncodeToString(hashAccessToken[:])
+
+	// Хешируем refresh-токен для поиска в PostgreSQL.
+	hashRefreshToken := sha256.Sum256([]byte(logout.RefreshToken))
+	refreshHash := hex.EncodeToString(hashRefreshToken[:])
 
 	// Отзываем refresh-токен.
-	err := s.repo.RevokeRefreshToken(ctx, refreshHash)
-	if err != nil {
+	if err := s.repo.RevokeRefreshToken(ctx, refreshHash); err != nil {
 		if errors.Is(err, core_errors.ErrNotFound) {
 			return core_errors.ErrUnauthenticated
 		}
+
 		return err
 	}
+
+	// Добавляем access-токен в blacklist до момента его естественного истечения.
+	if err := s.redis.Set(
+		ctx,
+		blacklistKey,
+		"1",
+		ttl,
+	).Err(); err != nil {
+		return fmt.Errorf("blacklist access token: %w", err)
+	}
+
 	return nil
 }
 

@@ -21,6 +21,13 @@ func ToDomainLogin(login *authpb.LoginRequest, userID uuid.UUID) core_model.Logi
 	}
 }
 
+func ToDomainLogout(logout *authpb.LogoutRequest) core_model.Logout {
+	return core_model.Logout{
+		AccessToken:  logout.AccessToken,
+		RefreshToken: logout.RefreshToken,
+	}
+}
+
 func ToProtoTokenPair(tokenPair core_model.TokenPair) *authpb.TokenPair {
 	return &authpb.TokenPair{
 		AccessToken:  tokenPair.AccessToken,
