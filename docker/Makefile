@@ -15,10 +15,10 @@ user-down:
 	docker compose stop user postgres-user
 
 auth-up:
-	docker compose up -d --build auth postgres-auth
+	docker compose up -d --build auth postgres-auth redis-auth
 
 auth-down:
-	docker compose stop auth postgres-auth
+	docker compose stop auth postgres-auth redis-auth
 
 postgres-up:
 	docker compose up -d postgres-user postgres-auth
@@ -31,3 +31,9 @@ redis-up:
 
 redis-down:
 	docker compose stop redis-auth
+
+gateway-up:
+	docker compose up -d --build gateway
+
+gateway-down:
+	docker compose stop gateway

@@ -67,6 +67,31 @@ services:
       - app-network
     restart: always
 
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: cmd/Dockerfile
+    container_name: gateway
+    environment:
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=${GATEWAY_HTTP_PORT}
+
+      - USERS_GRPC_HOST=user:${USER_GRPC_PORT}
+      - AUTH_GRPC_HOST=auth:${AUTH_GRPC_PORT}
+
+      - LOGGER_LEVEL=${LOGGER_LEVEL}
+      - LOGGER_FOLDER=/app/out/logs
+    volumes:
+      - ../out/logs/gateway:/app/out/logs
+    ports:
+      - "${GATEWAY_HTTP_PORT}:${GATEWAY_HTTP_PORT}"
+    depends_on:
+      - user
+      - auth
+    networks:
+      - app-network
+    restart: always
+
   postgres-user:
     image: postgres:18.3-bookworm
     environment:
